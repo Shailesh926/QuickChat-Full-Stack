@@ -63,6 +63,7 @@ const login = async (state, credentials)=>{
 
     // Update profile function to handle user profile updates
 
+    
     const updateProfile = async (body)=>{
         try {
             const { data } = await axios.put("/api/auth/update-profile", body);
