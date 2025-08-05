@@ -40,6 +40,12 @@ io.on("connection", (socket)=>{
 app.use(express.json({limit: "4mb"}));
 app.use(cors());
 
+// Middleware to attach socket.io instance to requests
+app.use((req, res, next) => {
+    req.io = io;
+    req.userSocketMap = userSocketMap;
+    next();
+});
 
 // Routes setup
 app.use("/api/status", (req, res)=> res.send("Server is live"));
@@ -55,5 +61,5 @@ if(process.env.NODE_ENV !== "production"){
     server.listen(PORT, ()=> console.log("Server is running on PORT: " + PORT));
 }
 
-// Export server for Vervel
+// Export server for Vercel
 export default server;

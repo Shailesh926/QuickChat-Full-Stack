@@ -101,6 +101,7 @@ const login = async (state, credentials)=>{
     const value = {
         axios,
         authUser,
+        setAuthUser,
         onlineUsers,
         socket,
         login,

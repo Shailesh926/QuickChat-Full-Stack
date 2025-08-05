@@ -6,6 +6,8 @@ const LoginPage = () => {
 
   const [currState, setCurrState] = useState("Sign up")
   const [fullName, setFullName] = useState("")
+  // --- NEW: State for the username ---
+  const [username, setUsername] = useState("")
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [bio, setBio] = useState("")
@@ -21,7 +23,8 @@ const LoginPage = () => {
       return;
     }
 
-    login(currState=== "Sign up" ? 'signup' : 'login', {fullName, email, password, bio})
+  
+    login(currState=== "Sign up" ? 'signup' : 'login', {fullName, username, email, password, bio})
   }
 
   return (
@@ -41,8 +44,13 @@ const LoginPage = () => {
          </h2>
 
         {currState === "Sign up" && !isDataSubmitted && (
-          <input onChange={(e)=>setFullName(e.target.value)} value={fullName}
-           type="text" className='p-2 border border-gray-500 rounded-md focus:outline-none' placeholder="Full Name" required/>
+          <>
+            <input onChange={(e)=>setFullName(e.target.value)} value={fullName}
+             type="text" className='p-2 border border-gray-500 rounded-md focus:outline-none' placeholder="Full Name" required/>
+            {/* --- NEW: Input field for the unique username --- */}
+            <input onChange={(e)=>setUsername(e.target.value)} value={username}
+             type="text" className='p-2 border border-gray-500 rounded-md focus:outline-none' placeholder="Username" required/>
+          </>
         )}
 
         {!isDataSubmitted && (

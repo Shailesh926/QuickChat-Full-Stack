@@ -1,95 +1,77 @@
+import Conversation from "../models/Conversation.js";
 import Message from "../models/Message.js";
-import User from "../models/User.js";
-import cloudinary from "../lib/cloudinary.js"
-import { io, userSocketMap } from "../server.js";
+import cloudinary from "../lib/cloudinary.js";
 
-
-// Get all users except the logged in user
-export const getUsersForSidebar = async (req, res)=>{
+// --- MODIFIED: Sends a message to a specific conversation ---
+export const sendMessage = async (req, res) => {
     try {
-        const userId = req.user._id;
-        const filteredUsers = await User.find({_id: {$ne: userId}}).select("-password");
-
-        // Count number of messages not seen
-        const unseenMessages = {}
-        const promises = filteredUsers.map(async (user)=>{
-            const messages = await Message.find({senderId: user._id, receiverId: userId, seen: false})
-            if(messages.length > 0){
-                unseenMessages[user._id] = messages.length;
-            }
-        })
-        await Promise.all(promises);
-        res.json({success: true, users: filteredUsers, unseenMessages})
-    } catch (error) {
-        console.log(error.message);
-        res.json({success: false, message: error.message})
-    }
-}
-
-// Get all messages for selected user
-export const getMessages = async (req, res) =>{
-    try {
-        const { id: selectedUserId } = req.params;
-        const myId = req.user._id;
-
-        const messages = await Message.find({
-            $or: [
-                {senderId: myId, receiverId: selectedUserId},
-                {senderId: selectedUserId, receiverId: myId},
-            ]
-        })
-        await Message.updateMany({senderId: selectedUserId, receiverId: myId}, {seen: true});
-
-        res.json({success: true, messages})
-
-
-    } catch (error) {
-        console.log(error.message);
-        res.json({success: false, message: error.message})
-    }
-}
-
-// api to mark message as seen using message id
-export const markMessageAsSeen = async (req, res)=>{
-    try {
-        const { id } = req.params;
-        await Message.findByIdAndUpdate(id, {seen: true})
-        res.json({success: true})
-    } catch (error) {
-        console.log(error.message);
-        res.json({success: false, message: error.message})
-    }
-}
-
-// Send message to selected user
-export const sendMessage = async (req, res) =>{
-    try {
-        const {text, image} = req.body;
-        const receiverId = req.params.id;
+        const { io, userSocketMap } = req;
+        const { text, image } = req.body;
+        const { id: conversationId } = req.params;
         const senderId = req.user._id;
 
         let imageUrl;
-        if(image){
-            const uploadResponse = await cloudinary.uploader.upload(image)
+        if (image) {
+            const uploadResponse = await cloudinary.uploader.upload(image);
             imageUrl = uploadResponse.secure_url;
         }
+
         const newMessage = await Message.create({
             senderId,
-            receiverId,
+            conversationId,
             text,
-            image: imageUrl
-        })
+            image: imageUrl,
+            seenBy: [senderId] // The sender has seen the message
+        });
 
-        // Emit the new message to the receiver's socket
-        const receiverSocketId = userSocketMap[receiverId];
-        if (receiverSocketId){
-            io.to(receiverSocketId).emit("newMessage", newMessage)
-        }
+        // Update the conversation's lastMessage
+        await Conversation.findByIdAndUpdate(conversationId, {
+            lastMessage: newMessage._id
+        });
+        
+        // Populate sender details for the socket payload
+        await newMessage.populate("senderId", "fullName profilePic");
 
-        res.json({success: true, newMessage});
+        // Emit the new message to all participants in the conversation
+        const conversation = await Conversation.findById(conversationId);
+        conversation.participants.forEach(participantId => {
+            // Don't send the message back to the sender's socket
+            if (participantId.equals(senderId)) return;
+
+            const participantSocketId = userSocketMap[participantId];
+            if (participantSocketId) {
+                io.to(participantSocketId).emit("newMessage", newMessage);
+            }
+        });
+
+        res.status(201).json({ success: true, newMessage });
 
     } catch (error) {
-        console.log(error.message);
-        res.json({success: false, message: error.message})
+        console.log("Error in sendMessage controller: ", error.message);
+        res.status(500).json({ success: false, message: "Internal server error" });
     }
-}
+};
+
+// --- MODIFIED: Gets all messages for a specific conversation ---
+export const getMessages = async (req, res) => {
+    try {
+        const { id: conversationId } = req.params;
+        const userId = req.user._id;
+
+        const messages = await Message.find({ conversationId })
+            .populate("senderId", "fullName profilePic")
+            .lean();
+        
+        // Mark messages as seen by the current user
+        await Message.updateMany(
+            { conversationId: conversationId, seenBy: { $ne: userId } },
+            { $addToSet: { seenBy: userId } }
+        );
+
+        res.json({ success: true, messages });
+
+    } catch (error) {
+        console.log("Error in getMessages controller: ", error.message);
+        res.status(500).json({ success: false, message: "Internal server error" });
+    }
+};
